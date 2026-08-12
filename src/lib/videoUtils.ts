@@ -4,27 +4,32 @@
  * to stream into Eburon Live API for real-time vision capabilities.
  */
 
+export type CameraFacingMode = 'user' | 'environment';
+
 export class VideoController {
   private mediaStream: MediaStream | null = null;
   private videoElement: HTMLVideoElement | null = null;
   private canvasElement: HTMLCanvasElement | null = null;
   private frameIntervalTimer: number | null = null;
   private streamType: 'camera' | 'screen' | 'off' = 'off';
+  private facingMode: CameraFacingMode = 'user';
 
   public async startCamera(
     videoElement: HTMLVideoElement,
     onFrame: (base64Jpeg: string) => void,
-    fps = 1
+    fps = 1,
+    facingMode: CameraFacingMode = 'user'
   ): Promise<MediaStream> {
     this.stop();
     this.videoElement = videoElement;
     this.streamType = 'camera';
+    this.facingMode = facingMode;
 
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        facingMode: 'user',
+        facingMode: facingMode,
       },
     });
 
@@ -33,6 +38,10 @@ export class VideoController {
 
     this.startFrameExtraction(onFrame, fps);
     return this.mediaStream;
+  }
+
+  public getFacingMode(): CameraFacingMode {
+    return this.facingMode;
   }
 
   public async startScreenShare(

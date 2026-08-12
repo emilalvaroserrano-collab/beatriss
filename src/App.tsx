@@ -14,7 +14,7 @@ import {
   WsServerMessage,
 } from './types';
 import { AudioController, VadConfig, VadStatus } from './lib/audioUtils';
-import { VideoController } from './lib/videoUtils';
+import { VideoController, CameraFacingMode } from './lib/videoUtils';
 import { MobileOrb } from './components/MobileOrb';
 import { VideoFeed } from './components/VideoFeed';
 import { TranscriptsView } from './components/TranscriptsView';
@@ -50,6 +50,7 @@ import {
   X,
   User as UserIcon,
   Brain,
+  SwitchCamera,
 } from 'lucide-react';
 
 export default function App() {
@@ -66,6 +67,8 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [streamType, setStreamType] = useState<'camera' | 'screen' | 'off'>('off');
+  const [facingMode, setFacingMode] = useState<CameraFacingMode>('user');
+  const videoElemRef = useRef<HTMLVideoElement | null>(null);
 
   const [inputVol, setInputVol] = useState<number>(0);
   const [outputVol, setOutputVol] = useState<number>(0);
@@ -606,8 +609,10 @@ export default function App() {
   }, [connectWebSocket]);
 
   // Video Streaming Handlers
-  const handleStartCamera = async (videoElem: HTMLVideoElement) => {
+  const handleStartCamera = async (videoElem: HTMLVideoElement, overrideFacingMode?: CameraFacingMode) => {
     try {
+      videoElemRef.current = videoElem;
+      const mode = overrideFacingMode || facingMode;
       await videoCtrlRef.current.startCamera(
         videoElem,
         (base64Jpeg) => {
@@ -615,11 +620,21 @@ export default function App() {
             wsRef.current.send(JSON.stringify({ type: 'video', video: base64Jpeg }));
           }
         },
-        config.videoFps
+        config.videoFps,
+        mode
       );
       setStreamType('camera');
     } catch (err) {
       console.error('Camera start error:', err);
+    }
+  };
+
+  const handleToggleFacingMode = async () => {
+    const nextMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(nextMode);
+    triggerHaptic([10, 15]);
+    if (streamType === 'camera' && videoElemRef.current) {
+      await handleStartCamera(videoElemRef.current, nextMode);
     }
   };
 
@@ -896,8 +911,22 @@ export default function App() {
               }}
               className="w-10 h-10 rounded-full bg-white/5 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white transition-all duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] active:scale-90 active:bg-white/15 cursor-pointer"
               aria-label="Settings"
+              title="Open Settings"
             >
               <Settings className="w-5 h-5" strokeWidth={2.5} />
+            </button>
+
+            <button
+              onClick={handleToggleFacingMode}
+              className={`w-10 h-10 rounded-full backdrop-blur-xl border flex items-center justify-center transition-all duration-200 active:scale-90 cursor-pointer ${
+                facingMode === 'environment'
+                  ? 'bg-cyan-500/20 border-cyan-400/40 text-cyan-300'
+                  : 'bg-white/5 border-white/10 text-white hover:bg-white/15'
+              }`}
+              aria-label="Toggle Camera Direction"
+              title={`Camera Mode: ${facingMode === 'user' ? 'Front' : 'Rear'} (Click to switch)`}
+            >
+              <SwitchCamera className="w-5 h-5" strokeWidth={2} />
             </button>
           </div>
 
@@ -1066,7 +1095,15 @@ export default function App() {
                   onStartScreen={handleStartScreen}
                   onStopVideo={handleStopVideo}
                   streamType={streamType}
+                  facingMode={facingMode}
+                  onToggleFacingMode={handleToggleFacingMode}
                   fps={config.videoFps}
+                  status={status}
+                  inputVolume={inputVol}
+                  outputVolume={outputVol}
+                  isMuted={isMuted}
+                  onToggleMute={handleToggleMute}
+                  onCloseVideo={() => setActiveDrawer('none')}
                 />
               )}
 
