@@ -22,7 +22,6 @@ import { SettingsModal } from './components/SettingsModal';
 import { ContextWindowHUD } from './components/ContextWindowHUD';
 import { MemoryInspectorModal } from './components/MemoryInspectorModal';
 import { VadControlWidget } from './components/VadControlWidget';
-import { RealtimeAudioVisualizer } from './components/RealtimeAudioVisualizer';
 import { useAuth } from './context/AuthContext';
 import { db, auth, handleFirestoreError, OperationType } from './lib/firebase';
 import {
@@ -49,7 +48,6 @@ import {
   X,
   User as UserIcon,
   Brain,
-  Waves,
 } from 'lucide-react';
 
 export default function App() {
@@ -104,8 +102,7 @@ export default function App() {
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState<boolean>(false);
   const [isCompressingMemory, setIsCompressingMemory] = useState<boolean>(false);
 
-  // Voice Activity Detection (VAD) & Realtime Visualizer States
-  const [showRealtimeVisualizer, setShowRealtimeVisualizer] = useState<boolean>(true);
+  // Voice Activity Detection (VAD) States
   const [vadConfig, setVadConfigState] = useState<VadConfig>({
     enabled: true,
     threshold: 0.015,
@@ -828,22 +825,6 @@ export default function App() {
             >
               <Brain className="w-5 h-5" />
             </button>
-
-            <button
-              onClick={() => {
-                triggerHaptic(10);
-                setShowRealtimeVisualizer((prev) => !prev);
-              }}
-              className={`w-10 h-10 rounded-full backdrop-blur-xl border flex items-center justify-center transition-all duration-200 active:scale-90 cursor-pointer ${
-                showRealtimeVisualizer
-                  ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40'
-                  : 'bg-white/5 text-white border-white/10'
-              }`}
-              aria-label="Toggle Realtime Audio Spectrum"
-              title="Toggle Mic Realtime Audio Spectrum Visualizer"
-            >
-              <Waves className="w-5 h-5" />
-            </button>
           </div>
 
           <div className="text-center flex flex-col gap-1">
@@ -891,19 +872,6 @@ export default function App() {
               onUpdateConfig={handleUpdateVadConfig}
             />
           </div>
-
-          {/* Floating Mic Realtime Audio Visualizer overlay on main stage */}
-          {showRealtimeVisualizer && (
-            <div className="absolute top-16 z-20 w-full max-w-sm px-2 animate-fade-in">
-              <RealtimeAudioVisualizer
-                audioController={audioCtrlRef.current}
-                status={status}
-                isConnected={status !== 'disconnected' && status !== 'error'}
-                vadStatus={vadStatus}
-                isMuted={isMuted}
-              />
-            </div>
-          )}
 
           <MobileOrb
             status={status}
@@ -1019,13 +987,6 @@ export default function App() {
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {activeDrawer === 'chat' && (
                 <>
-                  <RealtimeAudioVisualizer
-                    audioController={audioCtrlRef.current}
-                    status={status}
-                    isConnected={status !== 'disconnected' && status !== 'error'}
-                    vadStatus={vadStatus}
-                    isMuted={isMuted}
-                  />
                   <VadControlWidget
                     vadConfig={vadConfig}
                     vadStatus={vadStatus}
