@@ -863,16 +863,6 @@ export default function App() {
 
         {/* Main AI Orb Visualization */}
         <main className="flex-1 flex flex-col justify-center items-center relative z-10 overflow-hidden px-4">
-          {/* Floating VAD Status Bar */}
-          <div className="absolute top-3 z-20">
-            <VadControlWidget
-              compact
-              vadConfig={vadConfig}
-              vadStatus={vadStatus}
-              onUpdateConfig={handleUpdateVadConfig}
-            />
-          </div>
-
           <MobileOrb
             status={status}
             inputVolume={inputVol}
@@ -987,11 +977,6 @@ export default function App() {
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {activeDrawer === 'chat' && (
                 <>
-                  <VadControlWidget
-                    vadConfig={vadConfig}
-                    vadStatus={vadStatus}
-                    onUpdateConfig={handleUpdateVadConfig}
-                  />
                   <ContextWindowHUD
                     memoryState={memoryState}
                     config={contextConfig}
