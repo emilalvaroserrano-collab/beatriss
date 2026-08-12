@@ -9,12 +9,22 @@ export interface AudioVisualizerData {
   outputFrequencies: Uint8Array;
 }
 
+export interface AttachmentInfo {
+  name: string;
+  type: 'image' | 'file';
+  mimeType: string;
+  dataUrl?: string;
+  base64?: string;
+  text?: string;
+}
+
 export interface TranscriptItem {
   id: string;
   role: 'user' | 'model' | 'system';
   text: string;
   timestamp: number;
   isPartial?: boolean;
+  attachments?: AttachmentInfo[];
 }
 
 export interface ToolCallLog {
@@ -79,7 +89,8 @@ export interface BeatriceConfig {
 export type WsClientMessage =
   | { type: 'audio'; audio: string } // Base64 16kHz PCM Little Endian
   | { type: 'video'; video: string } // Base64 JPEG frame
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; attachment?: AttachmentInfo }
+  | { type: 'attachment'; data: string; mimeType: string; fileName?: string; text?: string }
   | { type: 'interrupt' }
   | { type: 'config'; config: Partial<BeatriceConfig> }
   | { type: 'toolResponse'; id: string; name: string; response: unknown }

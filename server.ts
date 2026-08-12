@@ -737,8 +737,33 @@ When asked to run code, run shell commands, or perform analysis on what you see 
           liveSession.sendRealtimeInput({
             video: { data: msg.video, mimeType: 'image/jpeg' },
           });
-        } else if (msg.type === 'text' && msg.text && liveSession && isConnected) {
-          liveSession.sendRealtimeInput({ text: msg.text });
+        } else if (msg.type === 'text' && liveSession && isConnected) {
+          if (msg.attachment) {
+            const att = msg.attachment;
+            if (att.mimeType?.startsWith('image/') && att.base64) {
+              // Send image as multimodal frame to Eburon Gemini Live API
+              liveSession.sendRealtimeInput({
+                video: { data: att.base64, mimeType: att.mimeType || 'image/jpeg' },
+              });
+            }
+            if (att.text) {
+              const textWithFile = `[Attached Document: ${att.name}]\n\`\`\`\n${att.text}\n\`\`\`\n\n${msg.text || ''}`;
+              liveSession.sendRealtimeInput({ text: textWithFile });
+            } else if (msg.text) {
+              liveSession.sendRealtimeInput({ text: msg.text });
+            }
+          } else if (msg.text) {
+            liveSession.sendRealtimeInput({ text: msg.text });
+          }
+        } else if (msg.type === 'attachment' && liveSession && isConnected) {
+          if (msg.mimeType?.startsWith('image/') && msg.data) {
+            liveSession.sendRealtimeInput({
+              video: { data: msg.data, mimeType: msg.mimeType },
+            });
+          }
+          if (msg.text) {
+            liveSession.sendRealtimeInput({ text: `[Attached File: ${msg.fileName || 'document'}]\n${msg.text}` });
+          }
         } else if (msg.type === 'runSandbox') {
           const callId = 'manual_sb_' + Date.now();
           broadcastToClient({ type: 'toolCall', id: callId, name: 'executeCodeSandbox', args: { code: msg.code, language: msg.language } });

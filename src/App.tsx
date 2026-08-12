@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AgentTask,
+  AttachmentInfo,
   BeatriceConfig,
   CanvasContent,
   CliCommandRun,
@@ -672,17 +673,18 @@ export default function App() {
     setStatus('listening');
   };
 
-  const handleSendTextMessage = (text: string) => {
+  const handleSendTextMessage = (text: string, attachment?: AttachmentInfo) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const userItem: TranscriptItem = {
         id: 'user_txt_' + Date.now(),
         role: 'user',
         text,
         timestamp: Date.now(),
+        attachments: attachment ? [attachment] : undefined,
       };
       setTranscripts((prev) => [...prev, userItem]);
       saveTranscriptToFirestore(userItem);
-      wsRef.current.send(JSON.stringify({ type: 'text', text }));
+      wsRef.current.send(JSON.stringify({ type: 'text', text, attachment }));
     }
   };
 
@@ -897,18 +899,6 @@ export default function App() {
             >
               <Settings className="w-5 h-5" strokeWidth={2.5} />
             </button>
-
-            <button
-              onClick={() => {
-                triggerHaptic(10);
-                setIsMemoryInspectorOpen(true);
-              }}
-              className="w-10 h-10 rounded-full bg-[#00f2fe]/10 backdrop-blur-xl border border-[#00f2fe]/30 flex items-center justify-center text-[#00f2fe] transition-all duration-200 active:scale-90 cursor-pointer"
-              aria-label="Memory & Context Window"
-              title="Conversation Memory & Context Window Inspector"
-            >
-              <Brain className="w-5 h-5" />
-            </button>
           </div>
 
           <div className="text-center flex flex-col gap-1">
@@ -1060,23 +1050,14 @@ export default function App() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-hidden p-3">
               {activeDrawer === 'chat' && (
-                <>
-                  <ContextWindowHUD
-                    memoryState={memoryState}
-                    config={contextConfig}
-                    onOpenInspector={() => setIsMemoryInspectorOpen(true)}
-                    onCompressContext={handleCompressContext}
-                    isCompressing={isCompressingMemory}
-                  />
-                  <TranscriptsView
-                    transcripts={transcripts}
-                    onSendTextMessage={handleSendTextMessage}
-                    onClearTranscripts={handleClearTranscripts}
-                    isConnected={status !== 'disconnected' && status !== 'error'}
-                  />
-                </>
+                <TranscriptsView
+                  transcripts={transcripts}
+                  onSendTextMessage={handleSendTextMessage}
+                  onClearTranscripts={handleClearTranscripts}
+                  isConnected={status !== 'disconnected' && status !== 'error'}
+                />
               )}
 
               {activeDrawer === 'video' && (
