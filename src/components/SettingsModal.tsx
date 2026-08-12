@@ -13,6 +13,7 @@ interface SettingsModalProps {
   vadConfig?: VadConfig;
   vadStatus?: VadStatus;
   onSaveVadConfig?: (newConfig: Partial<VadConfig>) => void;
+  onOpenProfile?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -23,6 +24,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   vadConfig,
   vadStatus,
   onSaveVadConfig,
+  onOpenProfile,
 }) => {
   const { user, signInWithGoogle, logout } = useAuth();
 
@@ -57,7 +59,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="p-5 overflow-y-auto space-y-5 text-xs text-slate-300">
           {/* Firebase Auth & Sync Status */}
           <div className="space-y-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-            <label className="font-semibold text-slate-200 block">Firebase Account & Cloud Sync</label>
+            <div className="flex items-center justify-between">
+              <label className="font-semibold text-slate-200 block">Firebase Account & Cloud Sync</label>
+              {onOpenProfile && (
+                <button
+                  onClick={onOpenProfile}
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <UserIcon className="w-3 h-3" />
+                  View Profile Page
+                </button>
+              )}
+            </div>
             {user ? (
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">

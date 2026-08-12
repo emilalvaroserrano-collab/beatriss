@@ -19,6 +19,7 @@ import { VideoFeed } from './components/VideoFeed';
 import { TranscriptsView } from './components/TranscriptsView';
 import { ToolsWorkbench } from './components/ToolsWorkbench';
 import { SettingsModal } from './components/SettingsModal';
+import { ProfileModal } from './components/ProfileModal';
 import { ContextWindowHUD } from './components/ContextWindowHUD';
 import { MemoryInspectorModal } from './components/MemoryInspectorModal';
 import { VadControlWidget } from './components/VadControlWidget';
@@ -62,6 +63,7 @@ export default function App() {
 
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isProfileOpen, setIsProfileOpen] = useState<boolean>(false);
   const [streamType, setStreamType] = useState<'camera' | 'screen' | 'off'>('off');
 
   const [inputVol, setInputVol] = useState<number>(0);
@@ -228,6 +230,9 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtrlRef = useRef<AudioController>(new AudioController());
   const videoCtrlRef = useRef<VideoController>(new VideoController());
+  const reconnectAttemptRef = useRef<number>(0);
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isManualDisconnectRef = useRef<boolean>(false);
 
   // Firestore Transcripts Listener for Authenticated User
   useEffect(() => {
@@ -345,12 +350,23 @@ export default function App() {
     [user]
   );
 
-  // Connect to Beatrice OSS WebSocket server
+  // Connect to Beatrice OSS WebSocket server with Exponential Backoff Strategy
   const connectWebSocket = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    // Clear any active reconnect timer
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
+    if (
+      wsRef.current &&
+      (wsRef.current.readyState === WebSocket.OPEN ||
+        wsRef.current.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
 
+    isManualDisconnectRef.current = false;
     setStatus('connecting');
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -361,6 +377,8 @@ export default function App() {
 
     ws.onopen = async () => {
       console.log('Connected to Beatrice Live WebSocket bridge.');
+      // Successful connection: reset backoff counter
+      reconnectAttemptRef.current = 0;
       setStatus('connected');
 
       // Start Microphone input capture
@@ -479,25 +497,69 @@ export default function App() {
     ws.onerror = (event) => {
       console.warn('WebSocket connection status update:', event);
       setStatus('error');
-      setTranscripts((prev) => {
-        if (prev.some((t) => t.text.includes('connection status notice'))) return prev;
-        return [
-          ...prev,
-          {
-            id: 'err_ws_' + Date.now(),
-            role: 'system',
-            text: 'Live connection status notice: If Eburon API Key is missing or invalid, please set your API Key in Settings > Secrets. You can also click "Reconnect Beatrice Live Session" below.',
-            timestamp: Date.now(),
-          },
-        ];
-      });
     };
 
     ws.onclose = () => {
       console.log('WebSocket connection closed.');
       setStatus('disconnected');
+
+      // Exponential backoff automatic reconnect if unexpected disconnect
+      const MAX_RECONNECT_ATTEMPTS = 10;
+      const INITIAL_RECONNECT_DELAY_MS = 1000;
+      const MAX_RECONNECT_DELAY_MS = 30000;
+
+      if (!isManualDisconnectRef.current) {
+        if (reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttemptRef.current += 1;
+          const attempt = reconnectAttemptRef.current;
+          // Exponential backoff formula: min(MAX, INITIAL * 2^(attempt-1)) + jitter
+          const baseDelay = INITIAL_RECONNECT_DELAY_MS * Math.pow(2, attempt - 1);
+          const cappedDelay = Math.min(MAX_RECONNECT_DELAY_MS, baseDelay);
+          const jitter = Math.floor(Math.random() * 500);
+          const delay = cappedDelay + jitter;
+
+          console.log(`[Backoff] Scheduling reconnect attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS} in ${(delay / 1000).toFixed(1)}s...`);
+
+          setTranscripts((prev) => {
+            const noticeText = `Connection lost. Automatically reconnecting in ${(delay / 1000).toFixed(1)}s (Attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS})...`;
+            const last = prev[prev.length - 1];
+            if (last && last.role === 'system' && last.text.startsWith('Connection lost.')) {
+              return prev.slice(0, -1).concat({
+                id: 'reconnect_' + Date.now(),
+                role: 'system',
+                text: noticeText,
+                timestamp: Date.now(),
+              });
+            }
+            return [
+              ...prev,
+              {
+                id: 'reconnect_' + Date.now(),
+                role: 'system',
+                text: noticeText,
+                timestamp: Date.now(),
+              },
+            ];
+          });
+
+          reconnectTimerRef.current = setTimeout(() => {
+            connectWebSocket();
+          }, delay);
+        } else {
+          console.warn(`[Backoff] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached.`);
+          setTranscripts((prev) => [
+            ...prev,
+            {
+              id: 'reconnect_failed_' + Date.now(),
+              role: 'system',
+              text: 'Reconnection attempts exhausted. Click "Reconnect Beatrice" below to manually reconnect.',
+              timestamp: Date.now(),
+            },
+          ]);
+        }
+      }
     };
-  }, []);
+  }, [saveTranscriptToFirestore]);
 
   // Poll audio volume levels for Orb visualizer animation
   useEffect(() => {
@@ -514,10 +576,32 @@ export default function App() {
   useEffect(() => {
     connectWebSocket();
     return () => {
+      isManualDisconnectRef.current = true;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       audioCtrlRef.current.stopAll();
       videoCtrlRef.current.stop();
       if (wsRef.current) wsRef.current.close();
     };
+  }, [connectWebSocket]);
+
+  const handleManualReconnect = useCallback(() => {
+    isManualDisconnectRef.current = false;
+    reconnectAttemptRef.current = 0;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (wsRef.current) {
+      try {
+        wsRef.current.close();
+      } catch (e) {
+        // ignore
+      }
+    }
+    connectWebSocket();
   }, [connectWebSocket]);
 
   // Video Streaming Handlers
@@ -842,19 +926,21 @@ export default function App() {
               alt={user.displayName || 'User Profile'}
               onClick={() => {
                 triggerHaptic(10);
-                setIsSettingsOpen(true);
+                setIsProfileOpen(true);
               }}
               className="w-11 h-11 rounded-full object-cover border-2 border-white/10 cursor-pointer transition-transform duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] active:scale-90"
               draggable={false}
+              title="View User Profile"
             />
           ) : (
             <button
               onClick={() => {
                 triggerHaptic(10);
-                setIsSettingsOpen(true);
+                setIsProfileOpen(true);
               }}
               className="w-11 h-11 rounded-full bg-white/5 backdrop-blur-xl border border-white/10 hover:bg-white/10 flex items-center justify-center text-[#8e8e93] transition-all active:scale-90 cursor-pointer"
-              aria-label="Account Settings"
+              aria-label="User Profile"
+              title="View User Profile"
             >
               <UserIcon className="w-5 h-5" />
             </button>
@@ -872,7 +958,7 @@ export default function App() {
 
           {status === 'disconnected' || status === 'error' ? (
             <button
-              onClick={connectWebSocket}
+              onClick={handleManualReconnect}
               className="absolute bottom-6 px-5 py-2.5 rounded-full bg-gradient-to-r from-[#00f2fe] to-[#4facfe] text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-[#00f2fe]/20 transition-all active:scale-95 z-20 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -1033,6 +1119,19 @@ export default function App() {
         vadConfig={vadConfig}
         vadStatus={vadStatus}
         onSaveVadConfig={handleUpdateVadConfig}
+        onOpenProfile={() => {
+          setIsSettingsOpen(false);
+          setIsProfileOpen(true);
+        }}
+      />
+
+      {/* User Profile Modal */}
+      <ProfileModal
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+        status={status}
+        config={config}
+        transcriptsCount={transcripts.length}
       />
 
       {/* Conversation Memory & Context Window Inspector Modal */}
